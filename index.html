@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#172554">
+<meta name="description" content="Track student expenses, manage your budget, and make smarter money decisions.">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<title>Student Smart Budget Tracker</title>
+<style>
+:root{--ink:#182230;--muted:#667085;--line:#e5eaf2;--bg:#f5f7fb;--blue:#3157d5;--green:#11845b;--red:#d92d20}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+header{background:linear-gradient(120deg,#172554,#3157d5);color:white;padding:28px max(20px,calc((100% - 1100px)/2))}
+header h1{margin:0 0 7px;font-size:clamp(23px,4vw,32px)}header p{margin:0;color:#dbe5ff}
+main{max-width:1100px;margin:26px auto;padding:0 18px 40px}.status{padding:11px 14px;background:#fff;border:1px solid var(--line);border-radius:10px;margin-bottom:18px;font-size:13px;color:var(--muted)}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-bottom:20px}.card,.panel{background:#fff;border:1px solid var(--line);border-radius:15px;padding:20px;box-shadow:0 3px 12px #1c2c4a08}
+.card small{color:var(--muted);font-weight:600}.value{font-size:28px;font-weight:750;margin-top:10px}.green{color:var(--green)}.red{color:var(--red)}
+.layout{display:grid;grid-template-columns:340px 1fr;gap:18px}.panel h2{font-size:18px;margin:0 0 18px}
+label{display:block;font-size:13px;font-weight:650;margin:14px 0 7px}input,select{width:100%;padding:11px 12px;border:1px solid #d4dce8;border-radius:9px;font:inherit;background:#fff}button{border:0;border-radius:9px;padding:11px 14px;font-weight:700;cursor:pointer;background:var(--blue);color:white}button:hover{filter:brightness(.95)}.wide{width:100%;margin-top:16px}.secondary{background:#eef2ff;color:#2844ae}.danger{background:#fff0ef;color:#b42318}.row{display:flex;gap:9px;align-items:center}.row>*{flex:1}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:13px}.toolbar button{font-size:12px}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:12px 9px;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--muted);font-size:11px;text-transform:uppercase}td:last-child{text-align:right}.empty{text-align:center;color:var(--muted);padding:30px 8px}.mini{padding:7px 9px;font-size:12px}.note{color:var(--muted);font-size:12px;line-height:1.5;margin-top:13px}
+@media(max-width:760px){.cards{grid-template-columns:1fr}.layout{grid-template-columns:1fr}.value{font-size:25px}}
+</style>
+</head>
+<body>
+<header><h1>Student Smart Budget Tracker</h1><p>Track your expenses, manage your budget, and make smarter money decisions.</p></header>
+<main>
+<div id="status" class="status">Connecting to C++ backend…</div>
+<section class="cards">
+<div class="card"><small>MONTHLY BUDGET</small><div id="budgetValue" class="value">₹0</div></div>
+<div class="card"><small>TOTAL SPENT</small><div id="spentValue" class="value red">₹0</div></div>
+<div class="card"><small>REMAINING BALANCE</small><div id="remainingValue" class="value green">₹0</div></div>
+</section>
+<div class="layout">
+<section class="panel">
+<h2>Add an expense</h2>
+<form id="expenseForm">
+<label for="category">Category</label><select id="category" required><option>Food</option><option>Travel</option><option>Education</option><option>Shopping</option><option>Bills</option><option>Entertainment</option><option>Health</option><option>Other</option></select>
+<label for="amount">Amount (₹)</label><input id="amount" type="number" min="0.01" step="0.01" placeholder="e.g. 250" required>
+<label for="date">Date</label><input id="date" type="date" required>
+<label for="note">Note (optional)</label><input id="note" maxlength="120" placeholder="e.g. Lunch with friends">
+<button class="wide" type="submit">＋ Add expense</button>
+</form>
+<hr style="border:0;border-top:1px solid var(--line);margin:23px 0">
+<h2>Set budget</h2><form id="budgetForm"><label for="budget">Budget amount (₹)</label><input id="budget" type="number" min="1" step="1" required><button class="wide secondary" type="submit">Update budget</button></form>
+<p class="note">Your records are stored in a local SQLite database through the C++ backend.</p>
+</section>
+<section class="panel">
+<h2>Expense history</h2><div class="toolbar"><button id="exportBtn" class="secondary">Export CSV</button><button id="clearBtn" class="danger">Clear all</button></div>
+<div class="table-wrap"><table><thead><tr><th>Date</th><th>Category / Note</th><th>Amount</th><th></th></tr></thead><tbody id="rows"></tbody></table><div id="empty" class="empty">No expenses yet. Add your first expense.</div></div>
+</section>
+</div>
+</main>
+<script>
+// LOCAL TEST: keep localhost when the backend runs on your Mac.
+ // ONLINE DEPLOY: replace with your deployed HTTPS backend URL, e.g.
+ // const API = 'https://your-backend.example.com/api';
+ const API = 'http://localhost:8080/api';
+let summary = {budget:10000,spent:0,remaining:10000,expenses:[]};
+const $ = id => document.getElementById(id);
+const money = n => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:2}).format(n);
+$('date').value = new Date().toISOString().slice(0,10);
+async function request(path, options={}) {
+  const res = await fetch(API+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+function render(){
+ $('budgetValue').textContent=money(summary.budget);$('spentValue').textContent=money(summary.spent);
+ $('remainingValue').textContent=money(summary.remaining);$('remainingValue').className='value '+(summary.remaining<0?'red':'green');
+ $('budget').value=summary.budget;
+ $('rows').innerHTML='';
+ $('empty').style.display=summary.expenses.length?'none':'block';
+ summary.expenses.forEach(e=>{
+  const tr=document.createElement('tr');
+  const date=document.createElement('td');date.textContent=e.date;
+  const detail=document.createElement('td');detail.textContent=e.category+(e.note?' · '+e.note:'');
+  const amount=document.createElement('td');amount.textContent=money(e.amount);
+  const action=document.createElement('td');const btn=document.createElement('button');btn.className='mini danger';btn.textContent='Delete';btn.onclick=()=>removeExpense(e.id);action.appendChild(btn);
+  tr.append(date,detail,amount,action);$('rows').appendChild(tr);
+ });
+}
+async function refresh(){summary=await request('/summary');render();}
+async function removeExpense(id){if(!confirm('Delete this expense?'))return;try{await request('/expenses/'+id,{method:'DELETE'});await refresh();}catch(e){alert(e.message)}}
+$('expenseForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ try{await request('/expenses',{method:'POST',body:JSON.stringify({category:$('category').value,amount:Number($('amount').value),date:$('date').value,note:$('note').value.trim()})});$('amount').value='';$('note').value='';await refresh();}
+ catch(err){alert(err.message)}
+});
+$('budgetForm').addEventListener('submit',async e=>{e.preventDefault();try{await request('/budget',{method:'POST',body:JSON.stringify({budget:Number($('budget').value)})});await refresh();alert('Budget updated!')}catch(err){alert(err.message)}});
+$('clearBtn').onclick=async()=>{if(!confirm('Delete all expenses? This cannot be undone.'))return;try{await request('/expenses',{method:'DELETE'});await refresh()}catch(e){alert(e.message)}};
+$('exportBtn').onclick=()=>{const lines=[['Date','Category','Note','Amount'],...summary.expenses.map(e=>[e.date,e.category,e.note,e.amount])];const csv=lines.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='budget-expenses.csv';a.click();URL.revokeObjectURL(a.href)};
+// Register the service worker so the app shell can be cached for offline launch.
+ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+   window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch(console.error));
+ }
+ (async()=>{try{await refresh();$('status').textContent='✓ Connected to C++ backend · SQLite database';$('status').style.color='#11845b'}catch(e){$('status').textContent='Backend not connected. Start the C++ server for local testing, or configure your deployed HTTPS API URL.';$('status').style.color='#b42318'}})();
+</script>
+</body></html>
